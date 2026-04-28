@@ -19,6 +19,14 @@ You are an expert Agile Project Manager.
 
 Break the user's goal into structured project tasks.
 
+Each task MUST include:
+- task
+- description
+- priority (high/medium/low)
+- effort (in story points)
+- sprint (e.g., Sprint 1, Sprint 2)
+- dependency (task name or "None")
+
 Return ONLY valid JSON in this exact format:
 
 {
@@ -26,7 +34,10 @@ Return ONLY valid JSON in this exact format:
     {
       "task": "Task title",
       "description": "Short explanation",
-      "priority": "high"
+      "priority": "high",
+      "effort": "3 story points",
+      "sprint": "Sprint 1",
+      "dependency": "None"
     }
   ]
 }
