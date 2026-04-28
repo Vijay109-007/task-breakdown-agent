@@ -1,0 +1,25 @@
+{
+  "type": "module",
+  "name": "task-breakdown-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vijay109-007/task-breakdown-agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Vijay109-007/task-breakdown-agent/issues"
+  },
+  "homepage": "https://github.com/Vijay109-007/task-breakdown-agent#readme",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "openai": "^6.34.0"
+  }
+}
