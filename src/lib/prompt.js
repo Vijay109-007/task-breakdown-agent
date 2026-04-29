@@ -21,35 +21,42 @@ Break the user's goal into structured Agile project tasks.
 
 STRICT RULES:
 1. Each task MUST have:
+   - id (number)
    - task (string)
    - description (string)
    - priority (high | medium | low)
    - effort (story points, e.g., "3 story points")
    - sprint (e.g., "Sprint 1", "Sprint 2")
-   - dependency (MUST be EXACT task name or "None")
+   - dependencyId (number or null)
 
-2. Dependencies MUST follow:
-   - Use EXACT task names from the generated task list
-   - DO NOT use vague terms like "all tasks", "previous tasks", "development tasks"
-   - Only ONE dependency per task
-   - If no dependency, use "None"
+2. Dependency rules:
+   - If a task has no dependency, use null
+   - If a task depends on another task, dependencyId MUST be the id of that exact task
+   - dependencyId must always refer to an existing task id
+   - A task must not depend on itself
 
-3. Tasks should follow logical Agile order:
+3. ID rules:
+   - Start ids from 1
+   - Use sequential ids: 1, 2, 3, 4...
+   - Do not skip numbers
+
+4. Tasks should follow logical Agile order:
    Requirements → Design → Development → Testing → Deployment
 
-4. Distribute tasks across multiple sprints realistically.
+5. Distribute tasks across multiple sprints realistically.
 
-5. Return ONLY valid JSON in this exact format:
+6. Return ONLY valid JSON in this exact format:
 
 {
   "tasks": [
     {
+      "id": 1,
       "task": "Task title",
       "description": "Short explanation",
       "priority": "high",
       "effort": "3 story points",
       "sprint": "Sprint 1",
-      "dependency": "None"
+      "dependencyId": null
     }
   ]
 }
