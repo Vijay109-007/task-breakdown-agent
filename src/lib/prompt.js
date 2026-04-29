@@ -10,24 +10,36 @@ const client = new OpenAI({
 export async function generateTasks(input) {
   const response = await client.chat.completions.create({
     model: "gpt-4.1-mini",
-    response_format: { type: "json_object" }, // ✅ force JSON output
+    response_format: { type: "json_object" },
     messages: [
       {
         role: "system",
         content: `
 You are an expert Agile Project Manager.
 
-Break the user's goal into structured project tasks.
+Break the user's goal into structured Agile project tasks.
 
-Each task MUST include:
-- task
-- description
-- priority (high/medium/low)
-- effort (in story points)
-- sprint (e.g., Sprint 1, Sprint 2)
-- dependency (task name or "None")
+STRICT RULES:
+1. Each task MUST have:
+   - task (string)
+   - description (string)
+   - priority (high | medium | low)
+   - effort (story points, e.g., "3 story points")
+   - sprint (e.g., "Sprint 1", "Sprint 2")
+   - dependency (MUST be EXACT task name or "None")
 
-Return ONLY valid JSON in this exact format:
+2. Dependencies MUST follow:
+   - Use EXACT task names from the generated task list
+   - DO NOT use vague terms like "all tasks", "previous tasks", "development tasks"
+   - Only ONE dependency per task
+   - If no dependency, use "None"
+
+3. Tasks should follow logical Agile order:
+   Requirements → Design → Development → Testing → Deployment
+
+4. Distribute tasks across multiple sprints realistically.
+
+5. Return ONLY valid JSON in this exact format:
 
 {
   "tasks": [

@@ -19,19 +19,25 @@ result.tasks.forEach((task) => {
   grouped[task.sprint].push(task);
 });
 
-// Print Sprint Plan
+// Track completed tasks
+const completedTasks = new Set();
+
 console.log("\nSPRINT PLAN:");
 
 for (const sprint in grouped) {
   console.log(`\n=== ${sprint} ===`);
 
-  const readyTasks = grouped[sprint].filter(
-    (task) => task.dependency === "None"
-  );
+  const readyTasks = [];
+  const blockedTasks = [];
 
-  const blockedTasks = grouped[sprint].filter(
-    (task) => task.dependency !== "None"
-  );
+  grouped[sprint].forEach((task) => {
+    if (task.dependency === "None" || completedTasks.has(task.dependency)) {
+      readyTasks.push(task);
+      completedTasks.add(task.task);
+    } else {
+      blockedTasks.push(task);
+    }
+  });
 
   console.log(`Ready: ${readyTasks.length} | Blocked: ${blockedTasks.length}`);
 
