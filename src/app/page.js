@@ -14,11 +14,13 @@ const tasks = result.tasks;
 const progressFile = path.resolve("progress.json");
 
 let completedTaskIds = new Set();
+let taskAssignments = {};
 
 if (fs.existsSync(progressFile)) {
   try {
     const data = JSON.parse(fs.readFileSync(progressFile, "utf-8"));
     completedTaskIds = new Set(data.completedTaskIds || []);
+    taskAssignments = data.taskAssignments || {};
   } catch {
     console.log("⚠️ Failed to read progress file. Starting fresh.");
   }
@@ -27,7 +29,14 @@ if (fs.existsSync(progressFile)) {
 function saveProgress() {
   fs.writeFileSync(
     progressFile,
-    JSON.stringify({ completedTaskIds: Array.from(completedTaskIds) }, null, 2)
+    JSON.stringify(
+      {
+        completedTaskIds: Array.from(completedTaskIds),
+        taskAssignments,
+      },
+      null,
+      2
+    )
   );
 }
 
@@ -65,20 +74,33 @@ function printSprintPlan() {
 
     readyTasks.forEach((task) => {
       const status = completedTaskIds.has(task.id) ? "✅ DONE" : "✅ READY";
+      const assignment = taskAssignments[task.id];
 
       console.log(`\n${task.id}. ${task.task} ${status}`);
       console.log(`  Priority: ${task.priority}`);
       console.log(`  Effort: ${task.effort}`);
       console.log(`  Dependency ID: ${task.dependencyId ?? "None"}`);
       console.log(`  Description: ${task.description}`);
+
+      if (assignment) {
+        console.log(`  Assigned to: ${assignment.assignee} (${assignment.role})`);
+        console.log(`  Work Status: ${assignment.status}`);
+      }
     });
 
     blockedTasks.forEach((task) => {
+      const assignment = taskAssignments[task.id];
+
       console.log(`\n${task.id}. ${task.task} ⛔ BLOCKED`);
       console.log(`  Priority: ${task.priority}`);
       console.log(`  Effort: ${task.effort}`);
       console.log(`  Dependency ID: ${task.dependencyId}`);
       console.log(`  Description: ${task.description}`);
+
+      if (assignment) {
+        console.log(`  Assigned to: ${assignment.assignee} (${assignment.role})`);
+        console.log(`  Work Status: ${assignment.status}`);
+      }
     });
   }
 }
@@ -108,9 +130,18 @@ while (true) {
     break;
   }
 
+  taskAssignments[assignedTask.id] = {
+    assignee: assignee.name,
+    role: assignee.role,
+    status: "READY",
+  };
+
+  saveProgress();
+
   console.log("\n🧠 AI Task Assignment:");
   console.log(`Task: ${assignedTask.id}. ${assignedTask.task}`);
   console.log(`Assigned to: ${assignee.name} (${assignee.role})`);
+  console.log(`Status: ${taskAssignments[assignedTask.id].status}`);
   console.log(`Reason: ${assignment.reason}`);
 
   const userChoice = readlineSync.question(
@@ -144,6 +175,11 @@ while (true) {
   }
 
   completedTaskIds.add(selectedTask.id);
+
+  if (taskAssignments[selectedTask.id]) {
+    taskAssignments[selectedTask.id].status = "DONE";
+  }
+
   saveProgress();
 
   console.log(`\n✅ Marked as DONE: ${selectedTask.task}`);

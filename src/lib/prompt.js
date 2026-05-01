@@ -29,21 +29,29 @@ STRICT RULES:
    - sprint (e.g., "Sprint 1", "Sprint 2")
    - dependencyId (number or null)
 
-2. Dependency rules:
-   - If a task has no dependency, use null
-   - If a task depends on another task, dependencyId MUST be the id of that exact task
-   - dependencyId must always refer to an existing task id
-   - A task must not depend on itself
-
-3. ID rules:
+2. ID rules:
    - Start ids from 1
    - Use sequential ids: 1, 2, 3, 4...
    - Do not skip numbers
 
-4. Tasks should follow logical Agile order:
-   Requirements → Design → Development → Testing → Deployment
+3. Dependency rules:
+   - The first task must have dependencyId: null
+   - All other tasks should depend logically on a previous task
+   - Avoid multiple independent starting tasks unless truly required
+   - dependencyId must refer to an existing earlier task id
+   - A task must not depend on itself
+   - Do not create vague dependencies
 
-5. Distribute tasks across multiple sprints realistically.
+4. Workflow rules:
+   - Create a clear execution flow, not a flat task list
+   - Follow logical Agile order:
+     Requirements → User Stories → Design → Architecture → Development → Testing → Deployment → Monitoring
+   - Tasks in later sprints should usually depend on earlier sprint tasks
+
+5. Sprint rules:
+   - Distribute tasks across multiple sprints realistically
+   - Each sprint should contain related work
+   - Do not put testing or deployment before development tasks
 
 6. Return ONLY valid JSON in this exact format:
 
@@ -73,7 +81,7 @@ STRICT RULES:
 
   try {
     return JSON.parse(raw);
-  } catch (error) {
+  } catch {
     console.log("Invalid JSON:", raw);
     return raw;
   }
