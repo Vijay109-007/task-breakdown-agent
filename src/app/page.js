@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 import readlineSync from "readline-sync";
 import { generateTasks } from "../lib/prompt.js";
-
-const AUTO_MODE = false;
+import { getAITaskAssignment } from "../lib/decision.js";
+import { teamMembers } from "../lib/team.js";
 
 const userInput = process.argv.slice(2).join(" ");
 const input = userInput || "Build a login system";
@@ -19,86 +19,23 @@ if (fs.existsSync(progressFile)) {
   try {
     const data = JSON.parse(fs.readFileSync(progressFile, "utf-8"));
     completedTaskIds = new Set(data.completedTaskIds || []);
-  } catch (err) {
+  } catch {
     console.log("⚠️ Failed to read progress file. Starting fresh.");
   }
 }
 
 function saveProgress() {
-  const data = {
-    completedTaskIds: Array.from(completedTaskIds),
-  };
-
-  fs.writeFileSync(progressFile, JSON.stringify(data, null, 2));
-}
-
-function getNextSuggestedTask() {
-  const readyTasks = tasks.filter(
-    (task) =>
-      !completedTaskIds.has(task.id) &&
-      (task.dependencyId === null || completedTaskIds.has(task.dependencyId))
+  fs.writeFileSync(
+    progressFile,
+    JSON.stringify({ completedTaskIds: Array.from(completedTaskIds) }, null, 2)
   );
-
-  if (readyTasks.length === 0) {
-    return null;
-  }
-
-  const priorityOrder = {
-    high: 1,
-    medium: 2,
-    low: 3,
-  };
-
-  readyTasks.sort((a, b) => {
-    const priorityDifference =
-      (priorityOrder[a.priority] || 99) - (priorityOrder[b.priority] || 99);
-
-    if (priorityDifference !== 0) {
-      return priorityDifference;
-    }
-
-    const getStoryPoints = (effort) =>
-      parseInt(String(effort).match(/\d+/)?.[0] || "0", 10);
-
-    return getStoryPoints(a.effort) - getStoryPoints(b.effort);
-  });
-
-  return readyTasks[0];
-}
-
-function getDependencyTask(task) {
-  if (task.dependencyId === null) {
-    return null;
-  }
-
-  return tasks.find((item) => item.id === task.dependencyId);
-}
-
-function printAutoReason(task) {
-  const dependencyTask = getDependencyTask(task);
-
-  console.log(`\n🤖 AUTO-COMPLETED: ${task.task}`);
-  console.log("Reason:");
-
-  if (dependencyTask) {
-    console.log(`- Dependency completed: ${dependencyTask.task}`);
-  } else {
-    console.log("- No dependency required");
-  }
-
-  console.log("- No blockers remaining");
-  console.log(`- Priority considered: ${task.priority}`);
-  console.log(`- Effort considered: ${task.effort}`);
 }
 
 function printSprintPlan() {
   const grouped = {};
 
   tasks.forEach((task) => {
-    if (!grouped[task.sprint]) {
-      grouped[task.sprint] = [];
-    }
-
+    if (!grouped[task.sprint]) grouped[task.sprint] = [];
     grouped[task.sprint].push(task);
   });
 
@@ -154,23 +91,27 @@ while (true) {
     break;
   }
 
-  const suggestion = getNextSuggestedTask();
+  const assignment = await getAITaskAssignment(
+    tasks,
+    completedTaskIds,
+    teamMembers,
+    input
+  );
 
-  if (!suggestion) {
-    console.log("\n💡 No available tasks right now.");
+  const assignedTask = tasks.find((task) => task.id === assignment.taskId);
+  const assignee = teamMembers.find(
+    (member) => member.id === assignment.assigneeId
+  );
+
+  if (!assignedTask || !assignee) {
+    console.log("\n❌ AI could not create a valid assignment.");
     break;
   }
 
-  console.log(
-    `\n💡 Suggested next task:\n${suggestion.id}. ${suggestion.task} (Priority: ${suggestion.priority}, Effort: ${suggestion.effort})`
-  );
-
-  if (AUTO_MODE) {
-    completedTaskIds.add(suggestion.id);
-    saveProgress();
-    printAutoReason(suggestion);
-    continue;
-  }
+  console.log("\n🧠 AI Task Assignment:");
+  console.log(`Task: ${assignedTask.id}. ${assignedTask.task}`);
+  console.log(`Assigned to: ${assignee.name} (${assignee.role})`);
+  console.log(`Reason: ${assignment.reason}`);
 
   const userChoice = readlineSync.question(
     "\nEnter task ID to mark as DONE (or type 'exit'): "
@@ -185,12 +126,12 @@ while (true) {
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
 
   if (!selectedTask) {
-    console.log("\nInvalid task ID.");
+    console.log("\n❌ Invalid task ID.");
     continue;
   }
 
   if (completedTaskIds.has(selectedTask.id)) {
-    console.log("\nThis task is already DONE.");
+    console.log("\n⚠️ Task already completed.");
     continue;
   }
 
@@ -198,7 +139,7 @@ while (true) {
     selectedTask.dependencyId !== null &&
     !completedTaskIds.has(selectedTask.dependencyId)
   ) {
-    console.log("\n❌ Task is BLOCKED. Complete dependency first.");
+    console.log("\n⛔ Task is BLOCKED. Complete dependency first.");
     continue;
   }
 
@@ -206,9 +147,4 @@ while (true) {
   saveProgress();
 
   console.log(`\n✅ Marked as DONE: ${selectedTask.task}`);
-
-  if (completedTaskIds.size === tasks.length) {
-    console.log("\n🎉 All tasks completed! Project finished.");
-    break;
-  }
 }
