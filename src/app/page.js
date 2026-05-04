@@ -2,7 +2,10 @@ import fs from "fs";
 import path from "path";
 import readlineSync from "readline-sync";
 import { generateTasks } from "../lib/prompt.js";
-import { getAITaskAssignment } from "../lib/decision.js";
+import {
+  getAITaskAssignment,
+  getAIRebalanceDecision,
+} from "../lib/decision.js";
 import { teamMembers } from "../lib/team.js";
 
 const userInput = process.argv.slice(2).join(" ");
@@ -47,15 +50,15 @@ function getTeamWorkload() {
     workload[member.id] = {
       name: member.name,
       role: member.role,
+      capacity: member.capacity,
       activeTasks: 0,
     };
   });
 
   Object.values(taskAssignments).forEach((assignment) => {
     if (assignment.status === "IN_PROGRESS") {
-      const member = teamMembers.find(
-        (m) => m.name === assignment.assignee
-      );
+      const member = teamMembers.find((m) => m.name === assignment.assignee);
+
       if (member) {
         workload[member.id].activeTasks += 1;
       }
@@ -73,58 +76,60 @@ function detectBottlenecks(workload) {
   Object.values(workload).forEach((member) => {
     if (member.activeTasks >= 3) {
       console.log(
-        `⚠️ ${member.name} has ${member.activeTasks} tasks → overload`
+        `⚠️ ${member.name} has ${member.activeTasks} active tasks → overload risk`
       );
       hasIssue = true;
     }
 
     if (member.activeTasks === 0) {
-      console.log(`💡 ${member.name} has no tasks → available`);
+      console.log(`💡 ${member.name} has no active tasks → available`);
     }
   });
 
   if (!hasIssue) {
-    console.log("✅ No bottlenecks");
+    console.log("✅ No major bottlenecks detected");
   }
 }
 
-function autoRebalance(workload) {
-  const overloaded = Object.values(workload).filter(
-    (m) => m.activeTasks >= 3
-  );
-  const underloaded = Object.values(workload).filter(
-    (m) => m.activeTasks === 0
+async function runAIRebalancing(workload) {
+  const hasOverload = Object.values(workload).some(
+    (member) => member.activeTasks >= 3
   );
 
-  if (!overloaded.length || !underloaded.length) return;
+  if (!hasOverload) return;
 
-  console.log("\n🔁 Auto Rebalancing:");
+  const decision = await getAIRebalanceDecision(
+    tasks,
+    taskAssignments,
+    teamMembers,
+    workload
+  );
 
-  overloaded.forEach((over) => {
-    const taskToMove = Object.entries(taskAssignments).find(
-      ([_, t]) =>
-        t.assignee === over.name && t.status === "IN_PROGRESS"
-    );
+  if (!decision.shouldRebalance) {
+    console.log(`\n🔁 AI Rebalancing: ${decision.reason}`);
+    return;
+  }
 
-    if (!taskToMove) return;
+  const task = tasks.find((t) => t.id === decision.taskId);
+  const newAssignee = teamMembers.find(
+    (member) => member.id === decision.toAssigneeId
+  );
 
-    const [taskId] = taskToMove;
-    const newMember = teamMembers.find(
-      (m) => m.name === underloaded[0].name
-    );
+  if (!task || !newAssignee || !taskAssignments[decision.taskId]) {
+    console.log("\n❌ AI rebalancing decision was invalid.");
+    return;
+  }
 
-    taskAssignments[taskId].assignee = newMember.name;
-    taskAssignments[taskId].role = newMember.role;
-
-    const task = tasks.find((t) => t.id === Number(taskId));
-
-    console.log(
-      `🔄 Moved "${task.task}" from ${over.name} → ${newMember.name}`
-    );
-    console.log("Reason: workload balancing");
-  });
+  taskAssignments[decision.taskId].assignee = newAssignee.name;
+  taskAssignments[decision.taskId].role = newAssignee.role;
 
   saveProgress();
+
+  console.log("\n🔁 AI Rebalancing Decision:");
+  console.log(`Task: ${task.id}. ${task.task}`);
+  console.log(`Moved from: ${decision.fromAssignee}`);
+  console.log(`Moved to: ${newAssignee.name} (${newAssignee.role})`);
+  console.log(`Reason: ${decision.reason}`);
 }
 
 function printSprintPlan() {
@@ -181,10 +186,11 @@ while (true) {
   }
 
   const workload = getTeamWorkload();
-  detectBottlenecks(workload);
-  autoRebalance(workload);
 
-  const ai = await getAITaskAssignment(
+  detectBottlenecks(workload);
+  await runAIRebalancing(workload);
+
+  const assignment = await getAITaskAssignment(
     tasks,
     completedTaskIds,
     teamMembers,
@@ -192,11 +198,11 @@ while (true) {
     workload
   );
 
-  const task = tasks.find((t) => t.id === ai.taskId);
-  const member = teamMembers.find((m) => m.id === ai.assigneeId);
+  const task = tasks.find((t) => t.id === assignment.taskId);
+  const member = teamMembers.find((m) => m.id === assignment.assigneeId);
 
   if (!task || !member) {
-    console.log("❌ AI assignment failed");
+    console.log("\n❌ AI assignment failed");
     break;
   }
 
@@ -206,42 +212,57 @@ while (true) {
       role: member.role,
       status: "READY",
     };
+
     saveProgress();
   }
 
   console.log("\n🧠 AI Assignment:");
-  console.log(`Task: ${task.task}`);
-  console.log(`Assigned to: ${member.name}`);
-  console.log(`Reason: ${ai.reason}`);
+  console.log(`Task: ${task.id}. ${task.task}`);
+  console.log(`Assigned to: ${member.name} (${member.role})`);
+  console.log(`Reason: ${assignment.reason}`);
 
   const inputVal = readlineSync
     .question("\nEnter task (1s=start, 1d=done, exit): ")
     .toLowerCase();
 
-  if (inputVal === "exit") break;
+  if (inputVal === "exit") {
+    console.log("\nProgress saved. Exiting...");
+    break;
+  }
 
   const id = parseInt(inputVal);
   const action = inputVal.slice(-1);
 
-  if (!taskAssignments[id]) continue;
-
   const selectedTask = tasks.find((t) => t.id === id);
+
+  if (!selectedTask) {
+    console.log("\n❌ Invalid task ID");
+    continue;
+  }
 
   if (
     selectedTask.dependencyId !== null &&
     !completedTaskIds.has(selectedTask.dependencyId)
   ) {
-    console.log("⛔ Complete dependency first");
+    console.log("\n⛔ Complete dependency first");
+    continue;
+  }
+
+  if (!taskAssignments[id]) {
+    console.log("\n⚠️ Task is not assigned yet");
     continue;
   }
 
   if (action === "s") {
     taskAssignments[id].status = "IN_PROGRESS";
-    console.log("🚧 Started");
+    console.log(`\n🚧 Started: ${selectedTask.task}`);
   } else if (action === "d") {
     taskAssignments[id].status = "DONE";
     completedTaskIds.add(id);
-    console.log("✅ Completed");
+    console.log(`\n✅ Completed: ${selectedTask.task}`);
+  } else {
+    console.log("\n⚠️ Invalid action. Use 1s or 1d.");
+    continue;
   }
 
   saveProgress();
